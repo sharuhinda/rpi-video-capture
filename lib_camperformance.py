@@ -1,5 +1,7 @@
 import datetime
 from threading import Thread
+from picamera.array import PiRGBArray
+from picamera import PiCamera
 import cv2
 
 class FPS:
@@ -46,3 +48,56 @@ class WebcamVideoStream:
 
     def stop(self):
         self.stopped = True
+
+# PiVideoStream class handles video from PiCam hardware module
+class PiVideoStream:
+    def __init__(self, resolution=(320, 240), framerate=32):
+        self.camera = PiCamera()
+        self.camera.resolution = resolution
+        self.camera.framerate = framerate
+        self.rawCapture = PiRGBArray(self.camera, size=resolution)
+        self.stream = self.camera.capture_continuous(self.rawCapture, format="bgr", 
+            use_video_port=True)
+
+        self.frame = None
+        self.stopped = False
+
+    def start(self):
+        Thread(target=self.update, args=()).start()
+        return self
+
+    def update(self):
+        for f in self.stream:
+            self.frame = f.array
+            self.rawCapture.truncate(0)
+            if self.stopped:
+                self.stream.close()
+                self.rawCapture.close()
+                self.camera.close()
+                return
+
+    def read(self):
+        return self.frame
+
+    def stop(self):
+        self.stopped = True
+
+# Unified VideoStream class to handle both PiCam and WebCam
+class VideoStream:
+    def __init__(self, src=0, usePiCamera=False, resolution=(320, 240), framerate=32):
+        if usePiCamera:
+            self.stream = PiVideoStream(resolution=resolution, framerate=framerate)
+        else:
+            self.stream = WebcamVideoStream(src=src)
+
+    def start(self):
+        return self.stream.start()
+
+    def update(self):
+        self.stream.update()
+
+    def read(self):
+        return self.stream.read()
+
+    def stop(self):
+        self.stream.stop()
